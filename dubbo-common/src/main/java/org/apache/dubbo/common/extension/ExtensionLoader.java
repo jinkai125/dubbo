@@ -75,11 +75,11 @@ import static org.apache.dubbo.common.constants.CommonConstants.REMOVE_VALUE_PRE
 public class ExtensionLoader<T> {
 
     private static final Logger logger = LoggerFactory.getLogger(ExtensionLoader.class);
-
+    // java 原生的SPI
     private static final String SERVICES_DIRECTORY = "META-INF/services/";
-
+    // 针对用户定义使用
     private static final String DUBBO_DIRECTORY = "META-INF/dubbo/";
-
+    // 这个为dubbo本身的
     private static final String DUBBO_INTERNAL_DIRECTORY = DUBBO_DIRECTORY + "internal/";
 
     private static final Pattern NAME_SEPARATOR = Pattern.compile("\\s*[,]+\\s*");
@@ -117,8 +117,11 @@ public class ExtensionLoader<T> {
         ExtensionLoader.strategies = strategies;
     }
 
+    // 同样定义了私有构造函数
     private ExtensionLoader(Class<?> type) {
         this.type = type;
+        // 可以看到这里还会初始化一个objectFactory,而且同样是使用SPI机制来完成
+        // type如果是ExtensionFactory 那么不会初始化objectFactory，如果是的话会通过加载一个工厂类
         objectFactory = (type == ExtensionFactory.class ? null : ExtensionLoader.getExtensionLoader(ExtensionFactory.class).getAdaptiveExtension());
     }
 
@@ -127,20 +130,25 @@ public class ExtensionLoader<T> {
     }
 
     @SuppressWarnings("unchecked")
+    // 这里是实例化ExtensionLoader的入口
     public static <T> ExtensionLoader<T> getExtensionLoader(Class<T> type) {
         if (type == null) {
+        	// 基本校验
             throw new IllegalArgumentException("Extension type == null");
         }
         if (!type.isInterface()) {
+        	// 需要type是一个接口
             throw new IllegalArgumentException("Extension type (" + type + ") is not an interface!");
         }
         if (!withExtensionAnnotation(type)) {
+        	// type需要有SPI注解
             throw new IllegalArgumentException("Extension type (" + type +
                     ") is not an extension, because it is NOT annotated with @" + SPI.class.getSimpleName() + "!");
         }
-
+        // 这里对性能做了一步优化,先在EXTENSION_LOADERS 里获取到之前已经加载过的
         ExtensionLoader<T> loader = (ExtensionLoader<T>) EXTENSION_LOADERS.get(type);
         if (loader == null) {
+        	// 如果没有加载过该接口则重新实例化对应type的ExtensionLoader
             EXTENSION_LOADERS.putIfAbsent(type, new ExtensionLoader<T>(type));
             loader = (ExtensionLoader<T>) EXTENSION_LOADERS.get(type);
         }
@@ -391,8 +399,10 @@ public class ExtensionLoader<T> {
             throw new IllegalArgumentException("Extension name == null");
         }
         if ("true".equals(name)) {
+        	// 此配置为获取默认实现，跳过其最终也是进入这里
             return getDefaultExtension();
         }
+        // 这里是初始化holder，里边没有其他操作，不过这种方式可以了解学习下
         final Holder<Object> holder = getOrCreateHolder(name);
         Object instance = holder.get();
         if (instance == null) {
@@ -544,6 +554,7 @@ public class ExtensionLoader<T> {
 
     @SuppressWarnings("unchecked")
     public T getAdaptiveExtension() {
+    	// 优先获取缓存的结果
         Object instance = cachedAdaptiveInstance.get();
         if (instance == null) {
             if (createAdaptiveInstanceError != null) {
@@ -555,6 +566,7 @@ public class ExtensionLoader<T> {
             synchronized (cachedAdaptiveInstance) {
                 instance = cachedAdaptiveInstance.get();
                 if (instance == null) {
+                	// 缓存的结果为空，则初始化
                     try {
                         instance = createAdaptiveExtension();
                         cachedAdaptiveInstance.set(instance);
@@ -596,6 +608,7 @@ public class ExtensionLoader<T> {
 
     @SuppressWarnings("unchecked")
     private T createExtension(String name) {
+    	// 加载所有的实现类
         Class<?> clazz = getExtensionClasses().get(name);
         if (clazz == null) {
             throw findException(name);
@@ -606,9 +619,11 @@ public class ExtensionLoader<T> {
                 EXTENSION_INSTANCES.putIfAbsent(clazz, clazz.newInstance());
                 instance = (T) EXTENSION_INSTANCES.get(clazz);
             }
+            // 同样的进行了属性注入操作
             injectExtension(instance);
             Set<Class<?>> wrapperClasses = cachedWrapperClasses;
             if (CollectionUtils.isNotEmpty(wrapperClasses)) {
+            	// 对支持自动包装类完成自动封装
                 for (Class<?> wrapperClass : wrapperClasses) {
                     instance = injectExtension((T) wrapperClass.getConstructor(type).newInstance(instance));
                 }
@@ -767,6 +782,7 @@ public class ExtensionLoader<T> {
         String fileName = dir + type;
         try {
             Enumeration<java.net.URL> urls = null;
+            // 获取ClassLoader加载器
             ClassLoader classLoader = findClassLoader();
             
             // try to load from ExtensionLoader's ClassLoader first
@@ -805,6 +821,7 @@ public class ExtensionLoader<T> {
                 while ((line = reader.readLine()) != null) {
                     final int ci = line.indexOf('#');
                     if (ci >= 0) {
+                    	// 这里是对到注释部分的配置全部去除
                         line = line.substring(0, ci);
                     }
                     line = line.trim();
@@ -813,10 +830,12 @@ public class ExtensionLoader<T> {
                             String name = null;
                             int i = line.indexOf('=');
                             if (i > 0) {
+                            	// adaptive=org.apache.dubbo.common.compiler.support.AdaptiveCompiler,解出adaptive和实现类
                                 name = line.substring(0, i).trim();
                                 line = line.substring(i + 1).trim();
                             }
                             if (line.length() > 0 && !isExcluded(line, excludedPackages)) {
+                            	// 加载类
                                 loadClass(extensionClasses, resourceURL, Class.forName(line, true, classLoader), name);
                             }
                         } catch (Throwable t) {
@@ -832,6 +851,12 @@ public class ExtensionLoader<T> {
         }
     }
 
+    /**
+     * -去除排除的包不进行加载
+     * @param className
+     * @param excludedPackages
+     * @return
+     */
     private boolean isExcluded(String className, String... excludedPackages) {
         if (excludedPackages != null) {
             for (String excludePackage : excludedPackages) {
@@ -845,15 +870,19 @@ public class ExtensionLoader<T> {
 
     private void loadClass(Map<String, Class<?>> extensionClasses, java.net.URL resourceURL, Class<?> clazz, String name) throws NoSuchMethodException {
         if (!type.isAssignableFrom(clazz)) {
+        	// 如果加载类不能强制转换为type
             throw new IllegalStateException("Error occurred when loading extension class (interface: " +
                     type + ", class line: " + clazz.getName() + "), class "
                     + clazz.getName() + " is not subtype of interface.");
         }
         if (clazz.isAnnotationPresent(Adaptive.class)) {
+        	// 实现类包含Adaptive注解
             cacheAdaptiveClass(clazz);
         } else if (isWrapperClass(clazz)) {
+        	// 实现类可完成自动打包
             cacheWrapperClass(clazz);
         } else {
+        	// 有提供公共无参构造
             clazz.getConstructor();
             if (StringUtils.isEmpty(name)) {
                 name = findAnnotationName(clazz);
@@ -866,6 +895,7 @@ public class ExtensionLoader<T> {
             if (ArrayUtils.isNotEmpty(names)) {
                 cacheActivateClass(clazz, names[0]);
                 for (String n : names) {
+                	// 缓存实现类和名称的关系，增加性能
                     cacheName(clazz, n);
                     saveInExtensionClass(extensionClasses, clazz, n);
                 }
@@ -955,11 +985,12 @@ public class ExtensionLoader<T> {
 
     @SuppressWarnings("deprecation")
     private String findAnnotationName(Class<?> clazz) {
+    	// 首先取Extension注解内的name
         org.apache.dubbo.common.Extension extension = clazz.getAnnotation(org.apache.dubbo.common.Extension.class);
         if (extension != null) {
             return extension.value();
         }
-
+        // 其次取类名称去除实现类名称后的小写名
         String name = clazz.getSimpleName();
         if (name.endsWith(type.getSimpleName())) {
             name = name.substring(0, name.length() - type.getSimpleName().length());
@@ -970,6 +1001,7 @@ public class ExtensionLoader<T> {
     @SuppressWarnings("unchecked")
     private T createAdaptiveExtension() {
         try {
+        	// 注入AdaptiveExtension
             return injectExtension((T) getAdaptiveExtensionClass().newInstance());
         } catch (Exception e) {
             throw new IllegalStateException("Can't create adaptive extension " + type + ", cause: " + e.getMessage(), e);

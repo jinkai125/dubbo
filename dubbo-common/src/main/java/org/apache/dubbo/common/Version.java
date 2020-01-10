@@ -57,7 +57,7 @@ public final class Version {
     private static final Map<String, Integer> VERSION2INT = new HashMap<String, Integer>();
 
     static {
-        // 检查当前类是否出现了2次，避免出现版本冲突
+        // FIXME：检查当前类是否出现了2次，避免出现版本冲突
         Version.checkDuplicate(Version.class);
     }
 
@@ -156,9 +156,16 @@ public final class Version {
         return "";
     }
 
+    /**
+     * FIXME: 这里是获取版本技术的核心方法
+     * @param cls
+     * @param defaultVersion
+     * @return
+     */
     public static String getVersion(Class<?> cls, String defaultVersion) {
         try {
             // find version info from MANIFEST.MF first
+        	// TODO 解读 MANIFEST.MF 如果MANIFEST.MF没有或者么有在这里发现版本会解析jar包名来获取版本
             Package pkg = cls.getPackage();
             String version = null;
             if (pkg != null) {
