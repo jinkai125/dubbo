@@ -45,6 +45,7 @@ public final class Version {
     // version 1.0.0 represents Dubbo rpc protocol before v2.6.2
     public static final int LEGACY_DUBBO_PROTOCOL_VERSION = 10000; // 1.0.0
     // Dubbo implementation version, usually is jar version.
+    // 定义静态常量，这个是获取dubbo的版本
     private static final String VERSION = getVersion(Version.class, "");
 
     /**
@@ -56,7 +57,7 @@ public final class Version {
     private static final Map<String, Integer> VERSION2INT = new HashMap<String, Integer>();
 
     static {
-        // check if there's duplicated jar
+        // 检查当前类是否出现了2次，避免出现版本冲突
         Version.checkDuplicate(Version.class);
     }
 
@@ -144,10 +145,6 @@ public final class Version {
         return v;
     }
     
-    public String test() {
-    	return "";
-    }
-
     /**
      * get prefix digits from given version string
      */
